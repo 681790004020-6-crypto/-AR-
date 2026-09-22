@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Math Adventure Land - เกม AR ผจญภัยดินแดนสมการ</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500;700&family=Mali:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Pose via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --primary: #FFB7B2;     /* Pastel Pink */
+            --secondary: #E2F0CB;   /* Pastel Mint */
+            --accent: #B5EAD7;      /* Pastel Green */
+            --bg-color: #C7CEEA;    /* Pastel Blue/Purple */
+            --text-dark: #4A4E69;
+            --white: #FFFFFF;
+            --danger: #FF9AA2;
+            --warning: #FFDAC1;
+            --success: #C7EA46;
+            --font-main: 'Mali', cursive;
+            --font-ui: 'Kanit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 50% 50%, #ffffff33 0%, transparent 60%),
+                              url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10zm50 50c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z' fill='%23ffffff' fill-opacity='0.2' fill-rule='evenodd'/%3E%3C/svg%3E");
+            color: var(--text-dark);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Screen Management */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease;
+            z-index: 10;
+        }
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Buttons & Inputs */
+        button {
+            font-family: var(--font-main);
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.1);
+            transition: all 0.1s;
+            margin: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+        }
+        .btn-primary { background-color: var(--primary); color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+        .btn-secondary { background-color: var(--accent); color: var(--text-dark); }
+        .btn-danger { background-color: var(--danger); color: white; }
+
+        input[type="text"] {
+            font-family: var(--font-ui);
+            font-size: 1.2rem;
+            padding: 12px 20px;
+            border: 3px solid var(--primary);
+            border-radius: 20px;
+            text-align: center;
+            outline: none;
+            margin-bottom: 20px;
+            width: 80%;
+            max-width: 300px;
+            background: rgba(255,255,255,0.9);
+        }
+
+        /* Start Screen */
+        #start-screen {
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--bg-color) 100%);
+            z-index: 50;
+        }
+        .title-container {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: float 3s ease-in-out infinite;
+        }
+        .title-container h1 {
+            font-size: 3rem;
+            color: white;
+            text-shadow: 3px 3px 0 var(--primary), -1px -1px 0 var(--primary), 1px -1px 0 var(--primary), -1px 1px 0 var(--primary), 1px 1px 0 var(--primary);
+            line-height: 1.2;
+        }
+        .mascot-large {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+        }
+        .mascot-large img {
+            width: 150px;
+            height: 150px;
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.2));
+        }
+
+        /* Game Screen */
+        #game-screen {
+            justify-content: flex-start;
+            z-index: 20;
+            background: transparent;
+        }
+        
+        /* Video & Canvas (AR Background) */
+        .video-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+            background: #000;
+        }
+        #webcam {
+            display: none;
+        }
+        #ar-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        /* HUD (Heads Up Display) */
+        .hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            z-index: 30;
+            font-family: var(--font-ui);
+        }
+        .hud-box {
+            background: rgba(255, 255, 255, 0.85);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border: 2px solid var(--white);
+            font-weight: bold;
+        }
+        .hearts-container { display: flex; gap: 5px; align-items: center; justify-content: center; min-width: 100px; height: 50px; }
+        .hearts-container img { width: 30px; height: 30px; animation: bounce 2s infinite; }
+        .score-display { font-size: 1.2rem; color: var(--text-dark); }
+        
+        .timer-bar-container {
+            width: 100%; max-width: 300px; height: 15px;
+            background: #eee; border-radius: 10px; margin-top: 5px; overflow: hidden;
+        }
+        .timer-bar {
+            height: 100%; background: var(--success); width: 100%;
+            transition: width 0.1s linear, background 0.3s;
+        }
+        
+        /* Equation Area */
+        .equation-container {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 40px;
+            border-radius: 30px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+            border: 4px solid var(--warning);
+            z-index: 30;
+            text-align: center;
+            min-width: 300px;
+        }
+        .equation-text {
+            font-size: 3.5rem;
+            font-weight: bold;
+            color: var(--text-dark);
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.05);
+        }
+
+        /* Choices Grid */
+        .choices-grid {
+            position: absolute;
+            top: 220px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-wrap: nowrap;
+            justify-content: center;
+            gap: 15px;
+            z-index: 30;
+            width: 95%;
+            max-width: 900px;
+        }
+        .choice-box {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.9);
+            border: 4px solid var(--primary);
+            border-radius: 20px;
+            padding: 12px 10px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .choice-box.active {
+            transform: scale(1.05);
+            border-color: var(--success);
+            box-shadow: 0 0 20px rgba(199, 234, 70, 0.8);
+        }
+        .choice-label {
+            font-size: 1.5rem; font-weight: bold; margin-bottom: 2px;
+        }
+        .choice-instruction {
+            font-size: 0.9rem; color: #666; font-family: var(--font-ui); line-height: 1.2;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .choice-instruction img { width: 24px; height: 24px; }
+        .choice-progress {
+            position: absolute;
+            bottom: 0; left: 0; height: 8px; width: 0%;
+            background-color: var(--success);
+            transition: width 0.1s linear;
+        }
+
+        /* Mascot Feedback */
+        .mascot-container {
+            position: absolute;
+            bottom: 20px; left: 20px;
+            display: flex; align-items: flex-end;
+            z-index: 30;
+        }
+        .mascot-avatar {
+            animation: bounce 2s infinite;
+        }
+        .mascot-avatar img { width: 100px; height: 100px; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.2)); }
+        
+        .speech-bubble {
+            background: white;
+            border-radius: 20px;
+            padding: 10px 20px;
+            margin-left: 15px;
+            margin-bottom: 30px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .speech-bubble::before {
+            content: ''; position: absolute;
+            bottom: 10px; left: -10px;
+            border-width: 10px 10px 10px 0;
+            border-style: solid;
+            border-color: transparent white transparent transparent;
+        }
+        .speech-bubble.show { opacity: 1; }
+
+        /* Controls */
+        .controls {
+            position: absolute; bottom: 20px; right: 20px; z-index: 30;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        
+        .modal-box {
+            background: white;
+            padding: 30px;
+            border-radius: 30px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 5px solid var(--primary);
+            position: relative;
+            transform: scale(0.8);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal-overlay.active .modal-box { transform: scale(1); }
+        
+        .modal-title { font-size: 2rem; color: var(--danger); margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 10px;}
+        .modal-title img { width: 32px; height: 32px; }
+        .modal-content { font-size: 1.2rem; font-family: var(--font-ui); margin-bottom: 20px; line-height: 1.5;}
+        
+        /* Leaderboard Table */
+        .leaderboard-table { width: 100%; border-collapse: collapse; margin-bottom: 20px;}
+        .leaderboard-table th, .leaderboard-table td { padding: 10px; border-bottom: 1px solid #eee; text-align: left;}
+        .leaderboard-table th { color: var(--primary); font-weight: bold;}
+
+        /* Visual Effects */
+        .screen-flash {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 40; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        }
+        .flash-success { background: rgba(199, 234, 70, 0.3); }
+        .flash-danger { background: rgba(255, 77, 77, 0.3); }
+
+        /* Animations */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .equation-text { font-size: 2.5rem; } 
+            .equation-container { top: 75px; padding: 10px 20px; min-width: 250px; }
+            .choices-grid { 
+                top: 170px; 
+                display: grid;
+                grid-template-columns: 1fr 1fr; 
+                gap: 10px; 
+            }
+            .choice-box { padding: 10px; }
+            .choice-label { font-size: 1.2rem; }
+            .choice-instruction { font-size: 0.8rem; }
+            .hud { flex-direction: column; align-items: center; gap: 10px; }
+            .hud-box { width: 100%; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" class="screen">
+        <div class="title-container">
+            <div class="mascot-large">
+                <!-- ใส่รูป Mascot ในหน้าเริ่มเกม -->
+                <img src="image_9.png" alt="Rabbit Mascot">
+            </div>
+            <h1>Math Adventure<br>Land</h1>
+            <p style="color: white; font-size: 1.2rem; margin-top: 10px;">เกม AR ผจญภัยดินแดนสมการ</p>
+        </div>
+        
+        <input type="text" id="player-name" placeholder="กรุณากรอกชื่อผู้เล่น" autocomplete="off" maxlength="15">
+        
+        <button class="btn-primary" id="btn-start">
+            <img src="image_7.png" width="24" height="24" alt="Camera"> เปิดโหมด AR (Start)
+        </button>
+        <button class="btn-secondary" id="btn-leaderboard">
+            <img src="image_6.png" width="24" height="24" alt="Leaderboard"> ตารางคะแนน
+        </button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen hidden">
+        <div class="video-container">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="ar-canvas"></canvas>
+        </div>
+        
+        <div class="hud">
+            <div class="hud-box" style="display: flex; gap: 20px; align-items: center;">
+                <div>
+                    <div style="font-size: 0.9rem; color: #888;">Player</div>
+                    <div id="hud-name" style="color: var(--primary); font-size: 1.2rem;">-</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.9rem; color: #888;">Level</div>
+                    <div id="hud-level" style="color: var(--accent); font-size: 1.2rem;">1</div>
+                </div>
+            </div>
+            
+            <div class="hud-box" style="text-align: center; min-width: 200px;">
+                <div class="score-display">Score: <span id="hud-score" style="font-size: 1.5rem; color: var(--primary);">0</span></div>
+                <div class="timer-bar-container">
+                    <div class="timer-bar" id="hud-timer"></div>
+                </div>
+            </div>
+
+            <!-- กล่องหัวใจจะถูกจัดการด้วย JavaScript เพื่อแสดงรูป image_10.png -->
+            <div class="hud-box hearts-container" id="hud-hearts"></div>
+        </div>
+
+        <div class="equation-container">
+            <div class="equation-text" id="equation-display">X + 5 = 10</div>
+        </div>
+
+        <div class="choices-grid">
+            <div class="choice-box" id="choice-0">
+                <div class="choice-label">A: <span class="answer-val">5</span></div>
+                <div class="choice-instruction">
+                    <!-- ไอคอนชูมือซ้าย -->
+                    <img src="image_4.png" alt="Hand"> ชูมือซ้าย
+                </div>
+                <div class="choice-progress" id="progress-0"></div>
+            </div>
+            <div class="choice-box" id="choice-1">
+                <div class="choice-label">B: <span class="answer-val">15</span></div>
+                <div class="choice-instruction">
+                    <!-- ไอคอนชูมือขวา (พลิกรูป) -->
+                    <img src="image_4.png" alt="Hand" style="transform: scaleX(-1);"> ชูมือขวา
+                </div>
+                <div class="choice-progress" id="progress-1"></div>
+            </div>
+            <div class="choice-box" id="choice-2">
+                <div class="choice-label">C: <span class="answer-val">2</span></div>
+                <div class="choice-instruction">
+                    <!-- ไอคอนชูสองมือ -->
+                    <img src="image_2.png" alt="Both Hands"> ชูสองมือ
+                </div>
+                <div class="choice-progress" id="progress-2"></div>
+            </div>
+            <div class="choice-box" id="choice-3">
+                <div class="choice-label">D: <span class="answer-val">10</span></div>
+                <div class="choice-instruction">
+                    <!-- ไอคอนวงกลม -->
+                    <img src="image.png" alt="Circle"> แขนวงกลม
+                </div>
+                <div class="choice-progress" id="progress-3"></div>
+            </div>
+        </div>
+
+        <div class="mascot-container">
+            <div class="mascot-avatar" id="mascot-avatar">
+                <!-- ใส่รูป Mascot ระหว่างเล่นเกม -->
+                <img src="image_9.png" alt="Rabbit">
+            </div>
+            <div class="speech-bubble" id="mascot-speech">สู้ๆ นะ!</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-danger" id="btn-quit" style="padding: 10px 15px; font-size: 1rem;">
+                <img src="image_3.png" width="16" height="16" alt="Quit"> ออกจากเกม
+            </button>
+        </div>
+    </div>
+
+    <div id="screen-flash" class="screen-flash"></div>
+
+    <!-- Modals -->
+    <div id="modal-alert" class="modal-overlay">
+        <div class="modal-box" style="border-color: var(--danger);">
+            <div class="modal-title" style="font-size: 1.5rem;">
+                <img src="image_3.png" alt="Alert"> แจ้งเตือน
+            </div>
+            <div class="modal-content" id="alert-text"></div>
+            <button class="btn-primary" onclick="document.getElementById('modal-alert').classList.remove('active')">ตกลง</button>
+        </div>
+    </div>
+
+    <div id="modal-loading" class="modal-overlay">
+        <div class="modal-box">
+            <div style="animation: float 1.5s infinite; margin-bottom: 20px;">
+                <img src="image_7.png" width="80" height="80" alt="Camera">
+            </div>
+            <h2 style="color: var(--primary);">กำลังเปิดกล้อง AR...</h2>
+            <p class="modal-content">กรุณาอนุญาตการเข้าถึงกล้องและรอสักครู่</p>
+        </div>
+    </div>
+
+    <div id="modal-explain" class="modal-overlay">
+        <div class="modal-box" style="border-color: var(--danger);">
+            <div class="modal-title">
+                <img src="image_3.png" alt="Wrong"> อุ๊ย! ผิดไปนิดนึง
+            </div>
+            <div class="modal-content">
+                <strong>เฉลยและวิธีคิด:</strong><br>
+                <span id="explain-text" style="color: var(--primary); font-size: 1.5rem; display: block; margin-top: 10px;"></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-gameover" class="modal-overlay">
+        <div class="modal-box">
+            <div style="margin-bottom: 20px;">
+                <img src="image_5.png" width="100" height="100" alt="Trophy">
+            </div>
+            <h2 class="modal-title" style="color: var(--primary);">สรุปผลการผจญภัย!</h2>
+            <div class="modal-content">
+                <p>ชื่อ: <strong id="go-name">-</strong></p>
+                <p>คะแนน: <strong id="go-score" style="font-size: 2rem; color: var(--success);">-</strong></p>
+                <p>ระดับสูงสุด: <strong id="go-level">-</strong></p>
+                <div id="go-badges" style="margin-top: 15px; font-size: 0.9rem; color: #888; display: flex; align-items: center; justify-content: center; gap: 5px;"></div>
+            </div>
+            <button class="btn-primary" id="btn-restart">เล่นอีกครั้ง</button>
+            <button class="btn-secondary" id="btn-home">หน้าหลัก</button>
+        </div>
+    </div>
+
+    <div id="modal-leaderboard" class="modal-overlay">
+        <div class="modal-box">
+            <h2 style="color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <img src="image_6.png" width="32" height="32" alt="Trophy"> Top 5 ผู้กล้า
+            </h2>
+            <table class="leaderboard-table">
+                <thead><tr><th>อันดับ</th><th>ชื่อ</th><th>คะแนน</th></tr></thead>
+                <tbody id="leaderboard-body">
+                    <!-- Dynamic Data -->
+                </tbody>
+            </table>
+            <button class="btn-secondary" id="btn-close-leaderboard">ปิด</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. Storage Manager (LocalStorage)
+        // ==========================================
+        class StorageManager {
+            constructor() {
+                this.dbName = 'math_adventure_data';
+                this.init();
+            }
+
+            init() {
+                if (!localStorage.getItem(this.dbName)) {
+                    localStorage.setItem(this.dbName, JSON.stringify({
+                        leaderboard: [],
+                        lastPlayer: ''
+                    }));
+                }
+            }
+
+            getData() { return JSON.parse(localStorage.getItem(this.dbName)); }
+            saveData(data) { localStorage.setItem(this.dbName, JSON.stringify(data)); }
+
+            saveScore(name, score, level) {
+                const data = this.getData();
+                data.lastPlayer = name;
+                data.leaderboard.push({ name, score, level, date: new Date().toISOString() });
+                data.leaderboard.sort((a, b) => b.score - a.score);
+                data.leaderboard = data.leaderboard.slice(0, 5);
+                this.saveData(data);
+            }
+
+            getLeaderboard() { return this.getData().leaderboard; }
+            getLastPlayer() { return this.getData().lastPlayer; }
+        }
+
+        // ==========================================
+        // 2. Audio Controller (Web Audio API)
+        // ==========================================
+        class AudioController {
+            constructor() {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            resume() {
+                if(this.ctx.state === 'suspended') this.ctx.resume();
+            }
+
+            playTone(frequency, type, duration, vol=0.1) {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(frequency, this.ctx.currentTime);
+                
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+
+            playSuccess() {
+                this.playTone(523.25, 'sine', 0.1, 0.2);
+                setTimeout(() => this.playTone(659.25, 'sine', 0.1, 0.2), 100);
+                setTimeout(() => this.playTone(783.99, 'sine', 0.2, 0.2), 200);
+            }
+
+            playError() {
+                this.playTone(300, 'sawtooth', 0.1, 0.2);
+                setTimeout(() => this.playTone(250, 'sawtooth', 0.3, 0.2), 150);
+            }
+
+            playTick() {
+                this.playTone(800, 'sine', 0.05, 0.05);
+            }
+        }
+
+        // ==========================================
+        // 3. Question Generator (Fixing Template Literals)
+        // ==========================================
+        class QuestionGenerator {
+            generate(level) {
+                let eqText, answer, explainText;
+                let maxNum = level < 3 ? 15 : (level < 5 ? 30 : 50);
+                const type = Math.floor(Math.random() * 3);
+
+                // ใส่ Backtick (`) กลับเข้ามาเพื่อการแสดงผลข้อความที่ถูกต้อง
+                if (level < 2 || type === 0) {
+                    const A = Math.floor(Math.random() * maxNum) + 1;
+                    const X = Math.floor(Math.random() * maxNum) + 1;
+                    const B = X + A;
+                    eqText = `X + ${A} = ${B}`;
+                    answer = X;
+                    explainText = `${eqText}<br>X = ${B} - ${A}<br>X = ${X}`;
+                } else if (type === 1) {
+                    if (Math.random() > 0.5) {
+                        const A = Math.floor(Math.random() * maxNum) + 1;
+                        const X = Math.floor(Math.random() * maxNum) + A + 1;
+                        const B = X - A;
+                        eqText = `X - ${A} = ${B}`;
+                        answer = X;
+                        explainText = `${eqText}<br>X = ${B} + ${A}<br>X = ${X}`;
+                    } else {
+                        const B = Math.floor(Math.random() * 10) + 1;
+                        const X = Math.floor(Math.random() * 10) + 1;
+                        const A = B + X;
+                        eqText = `${A} - X = ${B}`;
+                        answer = X;
+                        explainText = `${eqText}<br>X = ${A} - ${B}<br>X = ${X}`;
+                    }
+                } else {
+                    const A = Math.floor(Math.random() * 10) + 2;
+                    const X = Math.floor(Math.random() * 10) + 1;
+                    const B = A * X;
+                    eqText = `${A} × X = ${B}`;
+                    answer = X;
+                    explainText = `${eqText}<br>X = ${B} ÷ ${A}<br>X = ${X}`;
+                }
+
+                let choices = [answer];
+                while(choices.length < 4) {
+                    let offset = Math.floor(Math.random() * 10) - 5;
+                    if(offset === 0) offset = 1;
+                    let wrong = answer + offset;
+                    if(wrong < 0) wrong = answer + Math.floor(Math.random() * 5) + 1;
+                    if(!choices.includes(wrong)) choices.push(wrong);
+                }
+
+                choices = choices.sort(() => Math.random() - 0.5);
+                const correctIndex = choices.indexOf(answer);
+
+                return { eqText, choices, correctIndex, explainText };
+            }
+        }
+
+        // ==========================================
+        // 4. AR & Pose Manager
+        // ==========================================
+        class ARManager {
+            constructor(gameContext) {
+                this.game = gameContext;
+                this.videoElement = document.getElementById('webcam');
+                this.canvasElement = document.getElementById('ar-canvas');
+                this.canvasCtx = this.canvasElement.getContext('2d');
+                this.pose = null;
+                this.isReady = false;
+                this.animationFrameId = null;
+            }
+
+            async init() {
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        this.pose = new Pose({
+                            // แก้ไข Syntax ของ String Template ที่หายไป
+                            locateFile: (file) => {
+                                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+                            }
+                        });
+
+                        this.pose.setOptions({
+                            modelComplexity: 1,
+                            smoothLandmarks: true,
+                            enableSegmentation: false,
+                            minDetectionConfidence: 0.5,
+                            minTrackingConfidence: 0.5
+                        });
+
+                        this.pose.onResults(this.onResults.bind(this));
+
+                        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                            throw new Error("เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง");
+                        }
+
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+                        });
+
+                        this.videoElement.srcObject = stream;
+                        
+                        this.videoElement.onloadedmetadata = () => {
+                            this.videoElement.play();
+                            this.isReady = true;
+                            this.canvasElement.width = this.videoElement.videoWidth;
+                            this.canvasElement.height = this.videoElement.videoHeight;
+                            this.startProcessing();
+                            resolve();
+                        };
+                    } catch(e) {
+                        reject(e);
+                    }
+                });
+            }
+
+            startProcessing() {
+                let lastVideoTime = -1;
+                const processFrame = async () => {
+                    if (this.isReady && this.videoElement.readyState >= 2) {
+                        if (this.videoElement.currentTime !== lastVideoTime) {
+                            lastVideoTime = this.videoElement.currentTime;
+                            try {
+                                await this.pose.send({image: this.videoElement});
+                            } catch (e) {
+                                // Skip frame
+                            }
+                        }
+                    }
+                    this.animationFrameId = requestAnimationFrame(processFrame);
+                };
+                processFrame();
+            }
+
+            stop() {
+                if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+                if (this.videoElement.srcObject) {
+                    this.videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+                this.isReady = false;
+            }
+
+            onResults(results) {
+                if (!this.game.isPlaying || this.game.isPaused) return;
+
+                this.canvasCtx.save();
+                this.canvasCtx.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+                this.canvasCtx.drawImage(results.image, 0, 0, this.canvasElement.width, this.canvasElement.height);
+                
+                if (results.poseLandmarks) {
+                    drawConnectors(this.canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#FFFFFF', lineWidth: 4});
+                    drawLandmarks(this.canvasCtx, results.poseLandmarks, {color: '#FFB7B2', lineWidth: 2, radius: 5});
+                    
+                    this.detectPose(results.poseLandmarks);
+                } else {
+                    this.game.updateActivePose(null);
+                }
+                this.canvasCtx.restore();
+            }
+
+            detectPose(landmarks) {
+                const nose = landmarks[0];
+                const lWrist = landmarks[15];
+                const rWrist = landmarks[16];
+                const lShoulder = landmarks[11];
+                const rShoulder = landmarks[12];
+
+                if(lWrist.visibility < 0.6 && rWrist.visibility < 0.6) {
+                    this.game.updateActivePose(null);
+                    return;
+                }
+
+                const areWristsVisible = lWrist.visibility > 0.6 && rWrist.visibility > 0.6;
+                const lHandUp = lWrist.visibility > 0.6 && lWrist.y < lShoulder.y;
+                const rHandUp = rWrist.visibility > 0.6 && rWrist.y < rShoulder.y;
+
+                const wristsAboveNose = lWrist.y < nose.y && rWrist.y < nose.y;
+                const wristsClose = Math.abs(lWrist.x - rWrist.x) < 0.15 && Math.abs(lWrist.y - rWrist.y) < 0.15;
+                const isCircleOverHead = areWristsVisible && wristsAboveNose && wristsClose;
+
+                let detectedPose = null; // 0=A, 1=B, 2=C, 3=D
+
+                if (isCircleOverHead) {
+                    detectedPose = 3;
+                } else if (lHandUp && rHandUp && !wristsClose) {
+                    detectedPose = 2;
+                } else if (lHandUp && !rHandUp) {
+                    detectedPose = 0;
+                } else if (rHandUp && !lHandUp) {
+                    detectedPose = 1;
+                }
+
+                this.game.updateActivePose(detectedPose);
+            }
+        }
+
+        // ==========================================
+        // 5. Main Game Engine & UI Flow
+        // ==========================================
+        class Game {
+            constructor() {
+                this.storage = new StorageManager();
+                this.audio = new AudioController();
+                this.qGen = new QuestionGenerator();
+                this.ar = new ARManager(this);
+
+                this.playerName = '';
+                this.score = 0;
+                this.level = 1;
+                this.hearts = 3;
+                this.combo = 0;
+                this.isPlaying = false;
+                this.isPaused = false;
+                
+                this.timeLimit = 30;
+                this.timeLeft = 30;
+                this.timerInterval = null;
+
+                this.currentQuestion = null;
+                this.activePoseIndex = null;
+                this.poseHoldStart = 0;
+                this.holdRequired = 1500;
+
+                this.bindEvents();
+                this.initUI();
+            }
+
+            initUI() {
+                const lastUser = this.storage.getLastPlayer();
+                if(lastUser) document.getElementById('player-name').value = lastUser;
+                this.updateMascot("สวัสดี! มาเล่นคณิตศาสตร์กันเถอะ!");
+            }
+
+            bindEvents() {
+                document.getElementById('btn-start').addEventListener('click', () => this.initGame());
+                document.getElementById('btn-leaderboard').addEventListener('click', () => this.showLeaderboard());
+                document.getElementById('btn-close-leaderboard').addEventListener('click', () => {
+                    document.getElementById('modal-leaderboard').classList.remove('active');
+                });
+                document.getElementById('btn-quit').addEventListener('click', () => this.gameOver());
+                document.getElementById('btn-restart').addEventListener('click', () => {
+                    document.getElementById('modal-gameover').classList.remove('active');
+                    this.startGameplay();
+                });
+                document.getElementById('btn-home').addEventListener('click', () => {
+                    document.getElementById('modal-gameover').classList.remove('active');
+                    this.switchScreen('start-screen');
+                });
+            }
+
+            switchScreen(screenId) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+                document.getElementById(screenId).classList.remove('hidden');
+            }
+
+            showAlert(message) {
+                document.getElementById('alert-text').innerText = message;
+                document.getElementById('modal-alert').classList.add('active');
+            }
+
+            async initGame() {
+                const nameInput = document.getElementById('player-name').value.trim();
+                if(!nameInput) {
+                    this.showAlert("กรุณากรอกชื่อก่อนเริ่มเกมนะคะ!");
+                    return;
+                }
+                this.playerName = nameInput;
+                this.audio.resume();
+
+                document.getElementById('modal-loading').classList.add('active');
+
+                if(!this.ar.isReady) {
+                    try {
+                        await this.ar.init();
+                    } catch(err) {
+                        console.error("Camera Init Error:", err);
+                        this.showAlert(`ไม่สามารถเปิดกล้องได้: ${err.message || 'กรุณาอนุญาตการเข้าถึงกล้อง'}`);
+                        document.getElementById('modal-loading').classList.remove('active');
+                        return;
+                    }
+                }
+                
+                document.getElementById('modal-loading').classList.remove('active');
+                this.switchScreen('game-screen');
+                this.startGameplay();
+            }
+
+            startGameplay() {
+                this.score = 0;
+                this.level = 1;
+                this.hearts = 3;
+                this.combo = 0;
+                this.isPlaying = true;
+                this.isPaused = false;
+                
+                this.updateHUD();
+                this.generateNextQuestion();
+                this.updateMascot("เริ่มเลย! ชูมือเพื่อตอบคำถามนะ!");
+                
+                this.lastFrameTime = performance.now();
+                this.gameLoop();
+            }
+
+            generateNextQuestion() {
+                this.currentQuestion = this.qGen.generate(this.level);
+                
+                document.getElementById('equation-display').innerText = this.currentQuestion.eqText;
+                
+                for(let i=0; i<4; i++) {
+                    // แทรก Backtick (`) สำหรับ Template Literals
+                    document.querySelector(`#choice-${i} .answer-val`).innerText = this.currentQuestion.choices[i];
+                    document.getElementById(`progress-${i}`).style.width = '0%';
+                    document.getElementById(`choice-${i}`).classList.remove('active');
+                }
+
+                this.activePoseIndex = null;
+                this.poseHoldStart = 0;
+                this.resetTimer();
+            }
+
+            resetTimer() {
+                clearInterval(this.timerInterval);
+                this.timeLeft = this.timeLimit;
+                this.updateTimerUI();
+                
+                this.timerInterval = setInterval(() => {
+                    if(!this.isPlaying || this.isPaused) return;
+                    this.timeLeft--;
+                    this.updateTimerUI();
+                    
+                    if(this.timeLeft <= 5 && this.timeLeft > 0) this.audio.playTick();
+                    
+                    if(this.timeLeft <= 0) {
+                        this.handleTimeOut();
+                    }
+                }, 1000);
+            }
+
+            updateTimerUI() {
+                const bar = document.getElementById('hud-timer');
+                const pct = (this.timeLeft / this.timeLimit) * 100;
+                bar.style.width = `${pct}%`;
+                bar.style.background = pct > 20 ? 'var(--success)' : 'var(--danger)';
+            }
+
+            updateHUD() {
+                document.getElementById('hud-name').innerText = this.playerName;
+                document.getElementById('hud-score').innerText = this.score;
+                document.getElementById('hud-level').innerText = this.level;
+                
+                // นำเข้าภาพหัวใจแสดงใน HUD ให้ถูกต้อง
+                const heartImg = '<img src="image_10.png" alt="Heart">';
+                let heartsHTML = '';
+                for(let i=0; i<this.hearts; i++) heartsHTML += heartImg;
+                document.getElementById('hud-hearts').innerHTML = heartsHTML;
+            }
+
+            updateActivePose(poseIndex) {
+                if(this.isPaused || !this.isPlaying) return;
+
+                if (this.activePoseIndex !== poseIndex) {
+                    if(this.activePoseIndex !== null) {
+                        document.getElementById(`progress-${this.activePoseIndex}`).style.width = '0%';
+                        document.getElementById(`choice-${this.activePoseIndex}`).classList.remove('active');
+                    }
+                    
+                    this.activePoseIndex = poseIndex;
+                    
+                    if (poseIndex !== null) {
+                        this.poseHoldStart = performance.now();
+                        document.getElementById(`choice-${poseIndex}`).classList.add('active');
+                    }
+                }
+            }
+
+            gameLoop() {
+                if(!this.isPlaying) return;
+                
+                const now = performance.now();
+                
+                if (this.activePoseIndex !== null && !this.isPaused) {
+                    const holdTime = now - this.poseHoldStart;
+                    let progress = Math.min((holdTime / this.holdRequired) * 100, 100);
+                    
+                    document.getElementById(`progress-${this.activePoseIndex}`).style.width = `${progress}%`;
+                    
+                    if (holdTime >= this.holdRequired) {
+                        this.processAnswer(this.activePoseIndex);
+                        this.activePoseIndex = null;
+                    }
+                }
+
+                requestAnimationFrame(this.gameLoop.bind(this));
+            }
+
+            processAnswer(selectedIndex) {
+                if(this.isPaused) return;
+                
+                if (selectedIndex === this.currentQuestion.correctIndex) {
+                    this.handleCorrect();
+                } else {
+                    this.handleWrong();
+                }
+            }
+
+            handleCorrect() {
+                this.audio.playSuccess();
+                this.screenFlash('flash-success');
+                
+                this.combo++;
+                let points = 10;
+                if(this.combo >= 3) {
+                    points += 20;
+                    this.updateMascot("Combo!! สุดยอดดด!");
+                } else {
+                    const cheers = ["ยอดเยี่ยมไปเลย!", "เก่งมาก!", "ทำได้ดีมาก!", "เยี่ยม! ข้อต่อไปเลย"];
+                    this.updateMascot(cheers[Math.floor(Math.random() * cheers.length)]);
+                }
+                
+                this.score += points;
+                
+                if (this.score % 50 === 0) {
+                    this.level++;
+                    this.timeLimit = Math.max(10, this.timeLimit - 2);
+                    this.updateMascot(`ขึ้น Level ${this.level} แล้ว! สมการจะยากขึ้นนะ`);
+                }
+                
+                this.updateHUD();
+                this.generateNextQuestion();
+            }
+
+            handleWrong() {
+                this.audio.playError();
+                this.screenFlash('flash-danger');
+                this.combo = 0;
+                this.hearts--;
+                this.updateHUD();
+                this.updateMascot("ไม่เป็นไร พยายามเข้านะ!");
+
+                if (this.hearts <= 0) {
+                    this.gameOver();
+                } else {
+                    this.isPaused = true;
+                    clearInterval(this.timerInterval);
+                    
+                    document.getElementById('explain-text').innerHTML = this.currentQuestion.explainText;
+                    document.getElementById('modal-explain').classList.add('active');
+                    
+                    setTimeout(() => {
+                        document.getElementById('modal-explain').classList.remove('active');
+                        this.isPaused = false;
+                        this.generateNextQuestion();
+                    }, 2500);
+                }
+            }
+
+            handleTimeOut() {
+                this.audio.playError();
+                this.screenFlash('flash-danger');
+                this.combo = 0;
+                this.hearts--;
+                this.updateHUD();
+                this.updateMascot("หมดเวลาแล้ว! เร็วขึ้นอีกนิดนะ");
+
+                if (this.hearts <= 0) {
+                    this.gameOver();
+                } else {
+                    this.generateNextQuestion();
+                }
+            }
+
+            screenFlash(className) {
+                const flash = document.getElementById('screen-flash');
+                flash.className = `screen-flash ${className}`;
+                flash.style.opacity = '1';
+                setTimeout(() => { flash.style.opacity = '0'; }, 300);
+            }
+
+            updateMascot(text) {
+                const bubble = document.getElementById('mascot-speech');
+                bubble.innerText = text;
+                bubble.classList.remove('show');
+                void bubble.offsetWidth;
+                bubble.classList.add('show');
+                
+                setTimeout(() => { bubble.classList.remove('show'); }, 3000);
+            }
+
+            gameOver() {
+                this.isPlaying = false;
+                this.isPaused = true;
+                clearInterval(this.timerInterval);
+                
+                this.storage.saveScore(this.playerName, this.score, this.level);
+                
+                let badges = [];
+                // นำเข้าไอคอนเหรียญรางวัลในป้ายสรุป
+                const medalImg = '<img src="image_8.png" width="16" height="16" alt="Medal" style="vertical-align:middle;">';
+                if(this.score >= 100) badges.push(`${medalImg} Math Explorer`);
+                if(this.level >= 3) badges.push(`${medalImg} Combo Master`);
+                
+                document.getElementById('go-name').innerText = this.playerName;
+                document.getElementById('go-score').innerText = this.score;
+                document.getElementById('go-level').innerText = this.level;
+                
+                const badgeContainer = document.getElementById('go-badges');
+                if(badges.length) {
+                    badgeContainer.innerHTML = `เหรียญรางวัล: ${badges.join('&nbsp;&nbsp;')}`;
+                } else {
+                    badgeContainer.innerHTML = 'เล่นอีกครั้งเพื่อสะสมเหรียญรางวัล!';
+                }
+
+                document.getElementById('modal-gameover').classList.add('active');
+            }
+
+            showLeaderboard() {
+                const tbody = document.getElementById('leaderboard-body');
+                tbody.innerHTML = '';
+                const board = this.storage.getLeaderboard();
+                
+                if(board.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">ยังไม่มีข้อมูล</td></tr>';
+                } else {
+                    board.forEach((b, index) => {
+                        // นำเข้าไอคอนถ้วยรางวัลสำหรับอันดับ 1
+                        let trophy = index === 0 ? '<img src="image_5.png" width="16" height="16">' : index + 1;
+                        tbody.innerHTML += `<tr>
+                            <td style="text-align:center;">${trophy}</td>
+                            <td>${b.name} <br><small style="color:#aaa;font-size:0.8rem">Lv.${b.level}</small></td>
+                            <td style="font-weight:bold; color:var(--primary);">${b.score}</td>
+                        </tr>`;
+                    });
+                }
+                
+                document.getElementById('modal-leaderboard').classList.add('active');
+            }
+        }
+
+        // Init Game on load
+        window.addEventListener('load', () => {
+            window.adventureGame = new Game();
+        });
+
+    </script>
+</body>
+</html>
